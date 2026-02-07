@@ -1,95 +1,67 @@
 #include <arpa/inet.h>
-#include <bits/stdc++.h>
-#include <ifaddrs.h>
+#include <errno.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/wait.h>
+#include <unistd.h>
 
-using namespace std;
-
-#define BUFLEN 256
-
-volatile sig_atomic_t server_running = 1;
 int sid;
 
-void close_server_sid(int sig) {
-  if (sig == SIGINT) {
-    server_running = 0;
-    close(sid);
-  }
+void cleanup(int sig) {
+  printf("\n\nЗавершение работы...\n");
+  close(sid);
+  exit(0);
 }
 
-int transform(int n) { return n * n; }
-
-void print_available_ips() {
-  cout << "Available network interfaces:\n";
-
-  ifaddrs *ifaddr;
-  getifaddrs(&ifaddr);
-
-  for (ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-    if (ifa->ifa_addr == NULL) { // пропускает интерфейсы без адреса
-      continue;
-    }
-
-    if (ifa->ifa_addr->sa_family != AF_INET) {
-      continue;
-    }
-
-    sockaddr_in *addr = (sockaddr_in *)ifa->ifa_addr;
-    char ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &addr->sin_addr, ip, INET_ADDRSTRLEN);
-
-    cout << "\t" << ifa->ifa_name << ": " << ip << '\n';
-  }
+void transform(const char *buf, char *dest, const int buflen) {
+  int number = atoi(buf);
+  int tnumber = number * number;
+  snprintf(dest, buflen, "%d", tnumber);
 }
 
-int server_program() {
-  int msgLength;
-  sockaddr_in servAddr, clientAddr;
+int main(void) {
   socklen_t length;
-  char buf[BUFLEN];
+  sockaddr_in addr;
+  sockaddr_in client;
+  constexpr int buflen = 256;
+  char buf[buflen];
+  char reply[buflen];
+  signal(SIGINT, cleanup);
 
   sid = socket(AF_INET, SOCK_DGRAM, 0);
 
-  bzero((char *)&servAddr, sizeof(servAddr));
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = 0;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  servAddr.sin_family = AF_INET;
-  servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  servAddr.sin_port = 0;
+  bind(sid, (sockaddr *)&addr, sizeof(addr));
+  length = sizeof(addr);
+  getsockname(sid, (sockaddr *)&addr, &length);
 
-  bind(sid, (sockaddr *)&servAddr, sizeof(servAddr));
+  printf("Сервер: номер порта: %d\n", ntohs(addr.sin_port));
 
-  length = sizeof(servAddr);
-  getsockname(sid, (sockaddr *)&servAddr, &length);
+  printf("Сервер запущен...\n\n");
+  length = sizeof(client);
+  while (1) {
+    size_t n = recvfrom(sid, buf, buflen, 0, (sockaddr *)&client, &length);
+    buf[n] = '\0';
 
-  printf("SERVER: ip: %s\n", inet_ntoa(servAddr.sin_addr));
-  printf("SERVER: port number: %d\n", ntohs(servAddr.sin_port));
-  print_available_ips();
-  fflush(stdout);
+    printf("message: %s\n", buf);
+    printf("client: ip: %s\n", inet_ntoa(client.sin_addr));
+    printf("client: port: %d\n", ntohs(client.sin_port));
 
-  // обработка завершения на ^C
-  signal(SIGINT, close_server_sid);
+    transform(buf, reply, buflen);
+    sendto(sid, reply, buflen, 0, (sockaddr *)&client, length);
 
-  while (server_running) {
-    length = sizeof(clientAddr);
-    bzero(&buf, sizeof(buf));
-
-    recvfrom(sid, buf, sizeof(buf), 0, (sockaddr *)&clientAddr, &length);
-
-    printf("SERVER: client ip: %s\n", inet_ntoa(clientAddr.sin_addr));
-    printf("SERVER: client port: %d\n", ntohs(clientAddr.sin_port));
-    printf("SERVER: message: %d\n", ntohs(servAddr.sin_port));
-    fflush(stdout);
+    printf("\n\n");
   }
 
   close(sid);
-  return 0;
-}
-
-int main(int argc, char const *argv[]) {
-  server_program();
   return 0;
 }

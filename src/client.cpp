@@ -1,56 +1,61 @@
 #include <arpa/inet.h>
-#include <bits/stdc++.h>
+#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-
-using namespace std;
-
-#define BUFLEN 256
+#include <unistd.h>
 
 int sid;
 
-// client ip port i
-int client_program(int argc, char const *argv[]) {
-  int sid;
-  sockaddr_in servAddr, clientAddr;
-  socklen_t servAddr_len;
-  int send_message_count = 100;
+void cleanup(int sig) {
+  printf("\n\nЗавершение работы...\n");
+  close(sid);
+  exit(0);
+}
+
+int main(int argc, char const *argv[]) {
+  socklen_t length;
+  sockaddr_in addr;
+  sockaddr_in server;
+  constexpr int buflen = 256;
+  char reply[buflen];
+  signal(SIGINT, cleanup);
 
   if (argc < 4) {
     printf("usage: client <ip> <port> <i>\n");
-    return -1;
+    exit(0);
   }
 
   const char *server_ip = argv[1];
   int port = atoi(argv[2]);
-  const char *message = argv[3];
+  const char *msg = argv[3];
 
   sid = socket(AF_INET, SOCK_DGRAM, 0);
+  memset(&server, 0, sizeof(server));
+  server.sin_family = AF_INET;
+  server.sin_port = htons(port);
 
-  bzero((char *)&servAddr, sizeof(servAddr));
+  inet_pton(AF_INET, server_ip, &server.sin_addr);
 
-  servAddr.sin_family = AF_INET;
-  servAddr.sin_port = port;
+  length = sizeof(server);
+  int m = atoi(msg);
+  for (int i = 0; i < 10; ++i) {
+    sendto(sid, msg, strlen(msg), 0, (sockaddr *)&server, length);
 
-  inet_pton(AF_INET, server_ip, &servAddr.sin_addr);
+    size_t n = recvfrom(sid, reply, buflen, 0, NULL, NULL);
+    reply[n] = '\0';
+    printf("Ответ: %s", reply);
 
-  servAddr_len = sizeof(servAddr);
+    printf("\n\n");
 
-  sendto(sid, message, strlen(message), 0, (sockaddr *)&servAddr,
-         sizeof(servAddr));
-  // for (int i = 0; i < send_message_count; ++i) {
-
-  // }
+    sleep(m);
+  }
 
   close(sid);
-  return 0;
-}
-
-int main(int argc, char const *argv[]) {
-  client_program(argc, argv);
   return 0;
 }
