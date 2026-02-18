@@ -24,6 +24,7 @@ int main(int argc, char const *argv[]) {
   sockaddr_in server;
   constexpr int buflen = 256;
   char reply[buflen];
+  hostent *hp;
   signal(SIGINT, cleanup);
 
   if (argc < 4) {
@@ -31,25 +32,28 @@ int main(int argc, char const *argv[]) {
     exit(0);
   }
 
-  const char *server_ip = argv[1];
+  hp = gethostbyname(argv[1]);
   int port = atoi(argv[2]);
   const char *msg = argv[3];
 
-  sid = socket(AF_INET, SOCK_DGRAM, 0);
-  memset(&server, 0, sizeof(server));
-  server.sin_family = AF_INET;
-  server.sin_port = htons(port);
+  sid = socket(AF_INET, SOCK_STREAM, 0);
 
-  inet_pton(AF_INET, server_ip, &server.sin_addr);
+  bzero(&server, sizeof(server));
+  server.sin_family = AF_INET;
+  memcpy(&server.sin_addr, hp->h_addr_list[0], hp->h_length);
+  server.sin_port = htons(port);
 
   length = sizeof(server);
   int m = atoi(msg);
-  for (int i = 0; i < 10; ++i) {
-    sendto(sid, msg, strlen(msg), 0, (sockaddr *)&server, length);
 
-    size_t n = recvfrom(sid, reply, buflen, 0, NULL, NULL);
+  connect(sid, (sockaddr *)&server, sizeof(server));
+
+  for (int i = 0; i < 10; ++i) {
+    send(sid, msg, strlen(msg), 0);
+
+    size_t n = recv(sid, reply, buflen, 0);
     reply[n] = '\0';
-    printf("Ответ: %s", reply);
+    printf("Ответ от сервера: %s", reply);
 
     printf("\n\n");
 
@@ -57,5 +61,6 @@ int main(int argc, char const *argv[]) {
   }
 
   close(sid);
+  exit(0);
   return 0;
 }
