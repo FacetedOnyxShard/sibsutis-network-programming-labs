@@ -1,19 +1,21 @@
 #include <arpa/inet.h>
-#include <errno.h>
-#include <fstream>
-#include <iostream>
+#include <cstddef>
+#include <filesystem>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 using namespace std;
+using namespace std::filesystem;
 
 int main_socket;
 FILE *file;
@@ -67,20 +69,15 @@ void *buff_work(void *args) {
     fprintf(file, "client: ip: %s\n", inet_ntoa(client.sin_addr));
     fprintf(file, "client: port: %d\n", ntohs(client.sin_port));
     fprintf(file, "\n\n");
+    fflush(file);
+    pthread_mutex_unlock(&st_mutex);
 
     transform(buf, reply, buflen);
     send(csid, reply, buflen, 0);
-    pthread_mutex_unlock(&st_mutex);
   }
   close(csid);
 
   return NULL;
-}
-
-void reaper(int sig) {
-  int status;
-  while (wait3(&status, WNOHANG, 0) >= 0) {
-  }
 }
 
 int main(void) {
@@ -88,7 +85,6 @@ int main(void) {
   sockaddr_in addr;
 
   signal(SIGINT, cleanup);
-  signal(SIGCHLD, reaper);
 
   main_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -97,7 +93,11 @@ int main(void) {
   addr.sin_port = 0;
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  bind(main_socket, (sockaddr *)&addr, sizeof(addr));
+  if (bind(main_socket, (sockaddr *)&addr, sizeof(addr)) < 0) {
+    perror("Связывание сервера неудачно");
+    exit(1);
+  }
+
   length = sizeof(addr);
   getsockname(main_socket, (sockaddr *)&addr, &length);
 
@@ -112,8 +112,14 @@ int main(void) {
   length = sizeof(client);
   pid_t child;
 
+  create_directory("../data");
   string filename = "../data/client_requests.txt";
+
+  // очистка файла
   file = fopen(filename.c_str(), "w");
+  fclose(file);
+  file = nullptr;
+
   file = fopen(filename.c_str(), "a");
 
   pthread_t thread;
@@ -122,10 +128,6 @@ int main(void) {
   pthread_mutex_init(&st_mutex, NULL);
 
   for (;;) {
-    if (file == nullptr) {
-      cleanup(0);
-    }
-
     client_sock = accept(main_socket, (sockaddr *)&client, &length);
 
     worker_attributes_t *attr = new worker_attributes_t;

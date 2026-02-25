@@ -1,5 +1,4 @@
 #include <arpa/inet.h>
-#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -46,7 +45,10 @@ int main(int argc, char const *argv[]) {
   length = sizeof(server);
   int m = atoi(msg);
 
-  connect(sid, (sockaddr *)&server, sizeof(server));
+  if (connect(sid, (sockaddr *)&server, sizeof(server)) < 0) {
+    perror("Клиент не может соединиться");
+    exit(1);
+  }
 
   for (int i = 0; i < 10; ++i) {
     send(sid, msg, strlen(msg), 0);
