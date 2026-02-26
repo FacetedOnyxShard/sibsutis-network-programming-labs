@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <arpa/inet.h>
 #include <cstddef>
+#include <math.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -39,6 +41,9 @@ int handler(int client_sock, sockaddr_in *client) {
   size_t n;
 
   n = recv(client_sock, buf, buflen, 0);
+  if (n == 0) {
+    return n;
+  }
   if (n > 0) {
     buf[n] = '\0';
   }
@@ -92,6 +97,10 @@ int main(void) {
   FD_ZERO(&afds);
   FD_ZERO(&rfds);
   FD_SET(main_socket, &afds);
+  int maxfd = main_socket;
+  sockaddr_in clients[FD_SETSIZE];
+  bzero((void *)clients, sizeof(sockaddr_in) * FD_SETSIZE);
+
   for (;;) {
     memcpy(&rfds, &afds, sizeof(rfds));
 
@@ -101,14 +110,21 @@ int main(void) {
 
     if (FD_ISSET(main_socket, &rfds)) {
       client_sock = accept(main_socket, (sockaddr *)&client, &length);
+      memcpy(clients + client_sock, &client, sizeof(client));
       FD_SET(client_sock, &afds);
+      maxfd = max(maxfd, client_sock + 1);
     }
 
-    for (int fd = 0; fd < nfds; ++fd) {
+    for (int fd = 0; fd < maxfd && fd < nfds; ++fd) {
       if (fd != main_socket && FD_ISSET(fd, &rfds)) {
-        if (handler(fd, &client) == 0) {
+        if (handler(fd, &clients[fd]) == 0) {
           close(fd);
           FD_CLR(fd, &afds);
+
+          while (maxfd > main_socket && !FD_ISSET(maxfd, &afds)) {
+            maxfd--;
+          }
+          maxfd += 1;
         }
       }
     }
