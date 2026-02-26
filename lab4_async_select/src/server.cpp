@@ -104,7 +104,7 @@ int main(void) {
   for (;;) {
     memcpy(&rfds, &afds, sizeof(rfds));
 
-    if (select(nfds, &rfds, NULL, NULL, NULL) < 0) {
+    if (select(maxfd + 1, &rfds, NULL, NULL, NULL) < 0) {
       perror("select()");
     }
 
@@ -112,10 +112,10 @@ int main(void) {
       client_sock = accept(main_socket, (sockaddr *)&client, &length);
       memcpy(clients + client_sock, &client, sizeof(client));
       FD_SET(client_sock, &afds);
-      maxfd = max(maxfd, client_sock + 1);
+      maxfd = max(maxfd, client_sock);
     }
 
-    for (int fd = 0; fd < maxfd && fd < nfds; ++fd) {
+    for (int fd = 0; fd <= maxfd && fd < nfds; ++fd) {
       if (fd != main_socket && FD_ISSET(fd, &rfds)) {
         if (handler(fd, &clients[fd]) == 0) {
           close(fd);
@@ -124,7 +124,6 @@ int main(void) {
           while (maxfd > main_socket && !FD_ISSET(maxfd, &afds)) {
             maxfd--;
           }
-          maxfd += 1;
         }
       }
     }
